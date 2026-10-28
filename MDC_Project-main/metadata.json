@@ -1,0 +1,6 @@
+{
+  "name": "EmotiLens - AI Product Feedback Intelligence",
+  "description": "AI-powered product review analytics system featuring SimpleRNN emotion classification, VADER sentiment analysis, mismatch detection, and real-time executive dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

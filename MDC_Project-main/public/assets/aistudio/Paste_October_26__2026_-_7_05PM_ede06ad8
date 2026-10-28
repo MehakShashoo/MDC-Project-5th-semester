@@ -1,0 +1,400 @@
+# REPLIT AGENT BRIEF: EmotiLens, AI Product Feedback Intelligence System
+
+## 1. APP OVERVIEW
+
+**App name:** EmotiLens
+
+**One-line description:** A web app where customers rate a product and write a review. A SimpleRNN deep-learning model detects the emotion, a separate sentiment classifier labels the review positive, negative or neutral, and a live dashboard turns the stored feedback into product insights.
+
+**Core problem:** Star ratings do not explain *why* customers are happy or unhappy. Written reviews contain emotions, opinions and complaints, but they are unstructured and impossible to read at scale. EmotiLens converts raw feedback into organized, actionable analytics.
+
+**Target user:**
+- **Customers** submit a rating and a review.
+- **Product and business teams** monitor satisfaction, emotions, trends and recurring complaints.
+
+**Important honesty rules (apply everywhere in code, UI text and README):**
+- The customer's star rating is always stored and shown separately from AI output. The AI never replaces or overrides the rating.
+- The emotion model is trained on the general `dair-ai/emotion` dataset, not product reviews. State this limitation in the UI.
+- Never hardcode or claim an accuracy figure. Show only metrics computed by the evaluation script on the test set.
+- Sentiment comes from a separate component (VADER), not from the 6-class emotion model. Do not describe the emotion model as a validated 3-class sentiment classifier.
+- Issue grouping is keyword-based and lightweight. Label it "Keyword-based issue detection".
+
+---
+
+## 2. FULL FEATURE LIST
+
+**Core (must work):**
+1. Product selection page showing seeded products as cards with average rating and review count.
+2. Feedback form with product dropdown, interactive 1–5 star rating and a review textarea (min 5 characters, max 1000, live character counter).
+3. A `/predict`-style pipeline: text preprocessing → SimpleRNN emotion prediction (6 classes, with the full probability distribution) → VADER sentiment (positive, negative, neutral) → save to the database.
+4. Instant result card after submission showing the customer's rating, the predicted emotion with an emoji and confidence, an animated probability bar for all 6 emotions, and the sentiment badge.
+5. Database persistence: products table and feedback table.
+6. Analytics dashboard (per product, or "All products") with:
+   - KPI cards: average rating, total reviews, % positive, % negative, % neutral, top emotion.
+   - Emotion distribution (doughnut chart).
+   - Sentiment split (pie or doughnut chart).
+   - Rating distribution (bar chart, 1–5 stars).
+   - Trends over time (line chart: daily or weekly average rating plus count of positive and negative reviews).
+   - Date range filter (7 days, 30 days, 90 days, all).
+7. Reviews explorer: a table of reviews with filters (product, sentiment, emotion, rating), search text, sorting and pagination.
+8. Model Insights page showing the architecture diagram, training configuration, real test-set metrics (accuracy, per-class precision, recall and F1 from `metrics.json`), confusion matrix heatmap, dataset facts and limitations.
+
+**Impressive extras (build after core works):**
+9. **Rating–Text Mismatch Detector:** flag reviews where the star rating and text sentiment disagree (e.g. 5 stars but negative text, or 1 star but positive text). Show a "⚠ Mismatch" badge and a dashboard KPI "Mismatched reviews".
+10. **Keyword-based "Top Recurring Issues":** scan negative and low-rated (≤2 stars) reviews against a category keyword dictionary (battery, performance, crashes/bugs, price, shipping/delivery, customer support, quality/durability, UI/usability). Show a ranked horizontal bar chart with counts and 1–2 example snippets.
+11. **Live Analyzer playground:** a page or section where anyone can type text and see the emotion and sentiment prediction without saving anything (`/api/analyze`).
+12. **Emotion × Rating heatmap:** an HTML grid showing how many reviews of each emotion appeared at each star level.
+13. **Auto-generated plain-English insight summary** at the top of the dashboard, built from rules (not an LLM). Example: "62% of reviews are positive. The most common emotion is Joy. The top complaint category is Performance (9 mentions). Average rating changed from 3.8 to 4.1 over the last 30 days."
+14. Export filtered reviews as CSV.
+15. Dark/light mode toggle.
+16. Skeleton loaders, toast notifications, and animated count-up for KPI numbers.
+
+---
+
+## 3. TECH STACK
+
+| Layer | Technology |
+|---|---|
+| Language | Python 3.11 |
+| Backend API | FastAPI + Uvicorn |
+| ML / NLP | TensorFlow (CPU) / Keras: `Embedding`, `SimpleRNN`, `Dropout`, `Dense` |
+| Dataset loading | Hugging Face `datasets` (`dair-ai/emotion`) |
+| Sentiment | `vaderSentiment` |
+| Evaluation | scikit-learn (`classification_report`, `confusion_matrix`, `compute_class_weight`) |
+| Data | pandas, numpy |
+| Database ORM | SQLAlchemy 2.x |
+| Database | Use Replit's built-in PostgreSQL via the `DATABASE_URL` env var. If `DATABASE_URL` is not set, fall back to local SQLite (`sqlite:///./emotilens.db`). Add a README note that the schema is Supabase-compatible PostgreSQL (set `DATABASE_URL` to a Supabase connection string to switch). |
+| Frontend | Plain HTML, CSS, vanilla JavaScript, served by FastAPI as static files (no build step) |
+| Charts | Chart.js 4 via CDN |
+| Fonts | Google Fonts: Inter (body), Poppins (headings) |
+| Icons | Lucide icons via CDN or emoji |
+
+**Dependency notes:**
+- Use `tensorflow-cpu` and pin a recent stable version compatible with Python 3.11.
+- Do NOT use the deprecated `keras.preprocessing.text.Tokenizer`. Implement tokenization with a simple custom vocabulary (see Step 3) so it works with Keras 3.
+- Create `requirements.txt` with: `fastapi`, `uvicorn[standard]`, `tensorflow-cpu`, `datasets`, `scikit-learn`, `pandas`, `numpy`, `sqlalchemy`, `psycopg2-binary`, `vaderSentiment`, `pydantic`, `python-multipart`.
+
+---
+
+## 4. PAGES & USER FLOW
+
+Use a shared navbar on every page: **EmotiLens logo | Products | Submit Feedback | Dashboard | Reviews | Analyzer | Model Insights | theme toggle**.
+
+Files live in `/static/` as `index.html`, `feedback.html`, `dashboard.html`, `reviews.html`, `analyzer.html` and `model.html`, with shared `style.css` and `app.js`.
+
+**Page 1: Home / Products (`/`)**
+- Hero section: headline "Turn customer feedback into product insight", subtext with the workflow (Feedback → Preprocessing → AI → Database → Dashboard → Insights), and two buttons: "Leave Feedback" and "View Dashboard".
+- A mini 4-step workflow strip with icons.
+- A grid of product cards (name, description, emoji or icon, average star rating, review count, top emotion chip). Each card has "Give feedback" (→ `/feedback.html?product=ID`) and "View analytics" (→ `/dashboard.html?product=ID`).
+- A footer note: "Emotion model trained on general emotional text (dair-ai/emotion); performance on product reviews should be evaluated."
+
+**Page 2: Submit Feedback (`/feedback.html`)**
+- Product dropdown (pre-selected if `?product=` is given).
+- Large interactive star rating with hover preview and a label (1 = Very poor … 5 = Excellent).
+- Textarea with a character counter.
+- "Analyze & Submit" button with a loading spinner.
+- After success, show an animated result card below the form containing:
+  - "Your rating" (stars)
+  - Predicted emotion (large emoji + name + confidence %)
+  - Six horizontal probability bars that animate from 0 to their values
+  - Sentiment badge (green, red or gray)
+  - A mismatch warning if applicable
+  - Buttons: "Submit another" and "See dashboard for this product"
+- Validation errors appear inline.
+
+**Page 3: Dashboard (`/dashboard.html`)**
+- Top bar: product selector ("All products" plus each product), date range chips, and a refresh button.
+- Insight summary banner (rule-based text).
+- KPI row (6 cards).
+- Chart grid: emotion doughnut, sentiment doughnut, rating bar chart, trend line chart, Top Recurring Issues bar chart, Emotion × Rating heatmap.
+- "Recent reviews" panel (latest 5) with a link to the Reviews page.
+
+**Page 4: Reviews Explorer (`/reviews.html`)**
+- Filter bar: product, sentiment, emotion, rating, text search, sort (newest, oldest, highest or lowest rating, lowest confidence).
+- Table columns: date, product, rating (stars), review text (truncated, click to expand), emotion chip, sentiment chip, confidence %, mismatch flag.
+- Pagination (10 per page) and an "Export CSV" button.
+
+**Page 5: Live Analyzer (`/analyzer.html`)**
+- Textarea plus "Analyze" button plus 3 clickable example sentences (the three examples from the problem statement).
+- Shows the emotion probabilities, sentiment with VADER compound score, and a note: "Nothing is saved on this page."
+
+**Page 6: Model Insights (`/model.html`)**
+- Section "How it works": the pipeline diagram (HTML/CSS boxes with arrows): Input Text → Tokenization → Padding (50) → Embedding (128) → SimpleRNN (128) → Dropout (0.5) → SimpleRNN (64) → Dropout (0.5) → Dense Softmax (6).
+- Section "Dataset": 16,000 train, 2,000 validation, 2,000 test, 6 classes.
+- Section "Test-set performance": overall accuracy, macro F1, per-class table, and confusion matrix heatmap rendered from `/api/model/metrics`. If `metrics.json` is missing, show "Model not yet evaluated. Run `python ml/train.py`."
+- Section "Sentiment component": explains VADER separately.
+- Section "Limitations" (sarcasm, mixed opinions, domain gap, SimpleRNN long-sequence weakness) and "Future scope" (LSTM/GRU comparison, product-review fine-tuning, aspect-based sentiment, summaries, multilingual).
+
+**Navigation flow:** Home → (product card) → Feedback form → Result card → Dashboard (same product pre-selected) → Reviews explorer. The Analyzer and Model Insights pages are reachable from the navbar at any time.
+
+---
+
+## 5. UI & DESIGN INSTRUCTIONS
+
+**Style:** modern SaaS analytics look: clean, spacious, rounded cards, soft shadows, subtle glassmorphism on the hero.
+
+**Color palette (CSS variables):**
+- Primary: `#6366F1` (indigo); secondary: `#8B5CF6` (violet); accent: `#06B6D4` (cyan)
+- Background light: `#F8FAFC`; card light: `#FFFFFF`; text: `#0F172A`; muted: `#64748B`
+- Dark mode: background `#0B1120`, card `#111A2E`, text `#E2E8F0`, borders `#1E293B`
+- Sentiment colors: positive `#22C55E`, negative `#EF4444`, neutral `#94A3B8`
+- Emotion colors: joy `#FACC15`, love `#EC4899`, sadness `#3B82F6`, anger `#EF4444`, fear `#8B5CF6`, surprise `#F97316`
+- Emotion emojis: joy 😄, love ❤️, sadness 😢, anger 😠, fear 😨, surprise 😲
+
+**Typography:** Poppins 600/700 for headings, Inter 400/500 for body. Base size 16px, generous line height (1.6).
+
+**Layout:** max content width 1200px, 12-column CSS grid for the dashboard, fully responsive (charts stack on mobile; the navbar collapses into a hamburger below 768px). Border radius 16px on cards, 10px on inputs and buttons.
+
+**Components and animations:**
+- Hero with a soft indigo→violet gradient background.
+- Cards lift slightly on hover (`translateY(-4px)` plus shadow).
+- Star rating with hover fill and a small scale "pop" on select.
+- Probability bars animate width over 700ms with an ease-out curve.
+- KPI numbers count up on load.
+- Skeleton shimmer placeholders while data loads.
+- Toast notifications (success and error) at the top right.
+- Chips for emotion and sentiment with colored backgrounds at 15% opacity and a colored text.
+- Chart.js: consistent colors, rounded bars, tooltips, and legends at the bottom.
+- Dark mode toggle that persists using a JS variable and a `data-theme` attribute (do not rely on localStorage; if available, use it inside try/catch).
+- Empty states with a friendly illustration (emoji) and a call-to-action.
+
+---
+
+## 6. DATA & APIS
+
+### Data models
+
+**products**
+| Field | Type |
+|---|---|
+| id | Integer, primary key |
+| name | String(120), unique |
+| description | Text |
+| emoji | String(8) |
+
+**feedback**
+| Field | Type |
+|---|---|
+| feedback_id | Integer, primary key |
+| product_id | FK → products.id, indexed |
+| rating | Integer (1–5, check constraint) |
+| feedback_text | Text |
+| predicted_emotion | String(20) |
+| emotion_probabilities | JSON (dict of 6 emotion→probability) |
+| sentiment | String(10): positive / negative / neutral |
+| sentiment_score | Float (VADER compound, −1 to 1) |
+| confidence_score | Float (top emotion probability) |
+| mismatch_flag | Boolean |
+| issue_categories | JSON (list of strings) |
+| created_at | DateTime, default now, indexed |
+
+### Label mapping
+Load the label names from the dataset itself (`dataset["train"].features["label"].names`) and save them to `ml/artifacts/labels.json`. The expected order is `["sadness", "joy", "love", "anger", "fear", "surprise"]`. Always use the saved file at inference time, not a hardcoded list.
+
+### Sentiment logic (`services/sentiment.py`)
+- Use VADER `SentimentIntensityAnalyzer`. Compound ≥ 0.05 → positive; ≤ −0.05 → negative; otherwise neutral.
+- Return the label and the compound score.
+
+### Mismatch logic
+- `mismatch_flag = True` if (rating ≥ 4 and sentiment == "negative") or (rating ≤ 2 and sentiment == "positive").
+
+### Issue keyword dictionary (`services/issues.py`)
+Apply only to feedback where sentiment == "negative" or rating ≤ 2. Match lowercase substrings and word stems:
+- **Battery:** battery, charge, charging, drain
+- **Performance:** slow, lag, laggy, freeze, freezes, performance, loading
+- **Crashes / Bugs:** crash, crashes, crashing, bug, bugs, error, glitch, broken
+- **Price:** expensive, overpriced, price, cost, waste of money
+- **Shipping / Delivery:** shipping, delivery, delayed, late, arrived damaged, packaging
+- **Customer support:** support, customer service, refund, no response, waiting
+- **Quality / Durability:** cheap, flimsy, broke, defective, poor quality, stopped working
+- **UI / Usability:** confusing, hard to use, interface, clunky, navigation
+
+A review can match multiple categories.
+
+### Text preprocessing (`ml/preprocess.py`)
+- Lowercase, strip, collapse whitespace, remove URLs and HTML tags, keep letters, digits, apostrophes and basic punctuation, then split on whitespace.
+- Use identical preprocessing at training and inference time.
+
+### API endpoints (all JSON, prefix `/api`)
+| Method & path | Purpose |
+|---|---|
+| `GET /api/health` | `{status, model_loaded}` |
+| `GET /api/products` | Products with `avg_rating`, `review_count`, `top_emotion` |
+| `POST /api/feedback` | Body `{product_id, rating, feedback_text}`. Validate (rating 1–5, text 5–1000 chars). Run the pipeline, save, and return the saved record plus the full emotion probabilities. |
+| `POST /api/analyze` | Body `{text}`. Return emotion, probabilities, sentiment and score. Do not save. |
+| `GET /api/feedback` | Query params: `product_id, sentiment, emotion, rating, q, sort, page, page_size`. Return `{items, total, page, pages}`. |
+| `GET /api/feedback/export` | CSV download with the same filters. |
+| `GET /api/analytics/summary` | Query: `product_id?, days?`. Return KPIs (avg rating, total, sentiment percentages, top emotion, mismatch count) and the rule-based insight text. |
+| `GET /api/analytics/emotions` | Emotion counts and percentages. |
+| `GET /api/analytics/ratings` | Count per star level. |
+| `GET /api/analytics/trends` | Daily series (or weekly when days > 60): avg rating, review count, positive count, negative count. |
+| `GET /api/analytics/issues` | Ranked issue categories with counts and up to 2 example snippets. |
+| `GET /api/analytics/emotion-rating-matrix` | 6×5 count matrix. |
+| `GET /api/model/metrics` | Contents of `ml/artifacts/metrics.json`, or a `{available:false}` payload. |
+
+No external third-party APIs are required. Everything runs locally. The only external downloads are the Hugging Face dataset (once, during training) and the CDN assets (Chart.js, Google Fonts).
+
+### Seed data (`seed.py`, run on startup if the products table is empty)
+
+**Products:**
+1. **NovaPhone X2**, "Flagship smartphone with AI camera", 📱
+2. **TaskFlow Pro**, "Project management mobile & web app", 📋
+3. **AeroBuds Lite**, "Wireless earbuds with noise cancellation", 🎧
+
+**Reviews:** insert about 60 reviews spread across the three products, with `created_at` randomly distributed across the last 60 days (use a fixed random seed). For each, run the real emotion model and VADER at seed time so stored predictions are genuine. Use these as the base set (cycle and slightly vary them to reach about 60, mapping the rating shown):
+
+NovaPhone X2:
+- 5: "I absolutely love this phone, the camera is stunning!"
+- 5: "Best purchase I've made this year, I am so happy with it."
+- 4: "Great display and smooth experience, really impressed."
+- 2: "The battery drains way too fast and I am frustrated."
+- 1: "It keeps freezing and the performance is terrible, so angry."
+- 3: "The features are good, but the performance is disappointing."
+- 2: "Overpriced for what you get, honestly a waste of money."
+- 4: "I was surprised by how fast the charging is."
+- 1: "Delivery was delayed by two weeks and the packaging was damaged."
+- 5: "Feels amazing in my hand, I adore the design."
+- 3: "The product arrived yesterday."
+- 2: "I am worried the phone will stop working soon, the build feels flimsy."
+
+TaskFlow Pro:
+- 5: "This app changed how my team works, I love it!"
+- 1: "The application keeps crashing, and I am frustrated."
+- 2: "The interface is confusing and hard to use."
+- 4: "Really useful features, setup was easy."
+- 3: "Works fine most of the time but it is a bit slow when loading big projects."
+- 1: "Customer support never replied to my refund request, furious."
+- 5: "I never expected such a polished experience, what a pleasant surprise!"
+- 2: "Too many bugs after the latest update, I feel let down."
+- 4: "Clean design and the notifications are helpful."
+- 3: "It does the job."
+- 1: "I am scared of losing my data because of the constant errors."
+- 5: "Absolutely wonderful tool for planning."
+
+AeroBuds Lite:
+- 5: "The sound quality is incredible and I love the noise cancellation!"
+- 4: "Comfortable fit and the battery lasts all day."
+- 2: "One earbud stopped working after a month, really disappointed."
+- 1: "The charging case broke within a week, poor quality and I am angry."
+- 3: "Sound is good but the connection drops sometimes."
+- 5: "I'm so happy with these, perfect for my commute."
+- 2: "Shipping took forever and customer service was slow to respond."
+- 4: "Pleasantly surprised by the bass for this price."
+- 3: "They are okay for the price."
+- 1: "Cheap plastic and the sound cuts out, a total waste of money."
+- 5: "I adore these earbuds, best gift ever."
+- 2: "The touch controls are clunky and annoying."
+
+Make the seeded trend visibly interesting: ratings should improve slightly over the most recent 30 days for TaskFlow Pro, and AeroBuds Lite should have a cluster of negative reviews about quality and shipping in the middle weeks.
+
+---
+
+## 7. STEP-BY-STEP BUILD INSTRUCTIONS FOR REPLIT AGENT
+
+Build the entire app from scratch in this exact order. Do not skip steps. After each major step, run it and fix errors before moving on.
+
+**Step 1: Project scaffolding**
+1. Create a Python 3.11 FastAPI project with this structure:
+```
+/ 
+├── main.py
+├── database.py
+├── models.py
+├── schemas.py
+├── seed.py
+├── requirements.txt
+├── README.md
+├── ml/
+│   ├── preprocess.py
+│   ├── train.py
+│   ├── predictor.py
+│   └── artifacts/        (generated: emotion_model.keras, vocab.json, labels.json, metrics.json)
+├── services/
+│   ├── sentiment.py
+│   ├── issues.py
+│   └── analytics.py
+└── static/
+    ├── index.html, feedback.html, dashboard.html, reviews.html, analyzer.html, model.html
+    ├── style.css
+    └── app.js
+```
+2. Write `requirements.txt` as specified in Section 3 and install it.
+
+**Step 2: Database layer**
+1. In `database.py`, read `DATABASE_URL`. If missing, use SQLite `sqlite:///./emotilens.db`. If it starts with `postgres://`, rewrite to `postgresql://`. Create the engine, `SessionLocal` and `Base`, plus a `get_db` dependency.
+2. In `models.py`, define `Product` and `Feedback` exactly per the Section 6 schema (SQLAlchemy 2.x style). Use the `JSON` column type, which works for both SQLite and PostgreSQL.
+3. In `schemas.py`, define Pydantic models for requests and responses (`FeedbackCreate` with validation: rating 1–5, text 5–1000 chars after stripping).
+
+**Step 3: ML preprocessing and model training (`ml/`)**
+1. `preprocess.py`: implement `clean_text`, `build_vocab(texts, max_words=10000)` (a Counter-based vocabulary with index 0 = padding, index 1 = `<OOV>`, then the most common words), `texts_to_sequences`, and `pad(seqs, maxlen=50)` (post-padding and post-truncation). Save and load the vocabulary as `vocab.json`.
+2. `train.py`:
+   - Load `load_dataset("dair-ai/emotion")` (if the plain name fails, try `"emotion"`). Use the provided train, validation and test splits (16,000 / 2,000 / 2,000).
+   - Save `label_names` to `labels.json`.
+   - Build the vocabulary from the training split only, then convert and pad all splits to length 50.
+   - Build the model:
+     - `Embedding(input_dim=vocab_size, output_dim=128)`
+     - `SimpleRNN(128, return_sequences=True)`
+     - `Dropout(0.5)`
+     - `SimpleRNN(64)`
+     - `Dropout(0.5)`
+     - `Dense(6, activation="softmax")`
+   - Compile with the Adam optimizer, `sparse_categorical_crossentropy` loss and the accuracy metric.
+   - Compute class weights using `sklearn.utils.class_weight.compute_class_weight("balanced", ...)`, and pass them to `fit`.
+   - Train with `epochs=20`, `batch_size=64`, `EarlyStopping(monitor="val_loss", patience=3, restore_best_weights=True)`, using the validation set.
+   - Evaluate on the test set. Save `metrics.json` containing: test accuracy, macro and weighted precision, recall and F1, per-class precision, recall, F1 and support, the confusion matrix (as a list of lists), the label names, the training history (loss and accuracy per epoch), the epochs actually run, and the dataset split sizes.
+   - Save the model to `ml/artifacts/emotion_model.keras`.
+   - Print the classification report.
+   - Set random seeds for reproducibility.
+3. Run `python ml/train.py` now. If training takes too long on Replit, reduce `batch_size` issues or epochs, but keep the architecture exactly as specified. Verify that the artifacts are created.
+
+**Step 4: Predictor service**
+1. `ml/predictor.py`: a singleton class that loads the model, vocabulary and labels once at startup, with `predict(text) -> {emotion, confidence, probabilities: {label: float}}`. If the artifacts are missing, `model_loaded = False`, and the API must return a clear 503 error message telling the user to run `python ml/train.py` instead of crashing.
+2. `services/sentiment.py`: VADER logic per Section 6.
+3. `services/issues.py`: the keyword dictionary and `detect_issues(text, sentiment, rating)` per Section 6.
+4. `services/analytics.py`: helper functions that compute each analytics response using SQLAlchemy queries (or pandas on loaded rows, which is fine at this scale). Include the rule-based insight-sentence generator and the date filtering.
+
+**Step 5: Seeding**
+1. In `seed.py`, create the 3 products and the seed reviews from Section 6. For each review, run the real predictor, VADER, mismatch logic and issue detection, and set `created_at` across the last 60 days with a fixed random seed. Run it only if the products table is empty. If the model is not loaded, skip the review seeding and log a warning.
+
+**Step 6: FastAPI app (`main.py`)**
+1. Create the app, enable CORS, create the tables at startup, call the seeder, and mount `/static`. Serve `static/index.html` at `/`.
+2. Implement every endpoint in Section 6 under `/api`. In `POST /api/feedback`: validate, preprocess, predict emotion, compute sentiment, mismatch and issues, store and return the full record.
+3. Ensure all errors return JSON with helpful messages. Add a `/docs` link in the README.
+
+**Step 7: Frontend foundation**
+1. Write `style.css` with CSS variables for the light and dark themes, the palette, typography and components from Section 5: navbar, hero, cards, buttons, chips, KPI cards, skeletons, toasts, tables, stars, probability bars and responsive grid.
+2. Write `app.js` with shared helpers: `fetchJSON`, toast function, navbar injection (so the navbar is defined once), theme toggle, count-up animation, emotion and sentiment color and emoji maps, and star-rendering helpers.
+
+**Step 8: Build pages in this order**, testing each against the live API:
+1. `index.html`: hero, workflow strip, and the product cards loaded from `/api/products`.
+2. `feedback.html`: the form, interactive stars, submission to `/api/feedback`, and the animated result card.
+3. `dashboard.html`: filters, KPI cards, insight banner and all charts using Chart.js, each loaded from its analytics endpoint. Handle empty states.
+4. `reviews.html`: filters, search, sortable and paginated table, expandable text, and CSV export.
+5. `analyzer.html`: the playground using `/api/analyze`.
+6. `model.html`: the pipeline diagram, dataset facts and metrics (accuracy, per-class table, and a confusion-matrix heatmap rendered as a CSS grid with intensity-shaded cells) from `/api/model/metrics`, plus the sentiment, limitations and future-scope sections.
+
+**Step 9: Polish**
+1. Add the animations, skeleton loaders, hover effects and responsive checks from Section 5.
+2. Add the footer disclaimer on every page: "Emotion model trained on general emotional text (dair-ai/emotion). Sentiment via VADER. Issue detection is keyword-based. AI outputs are interpretations, not ground truth."
+3. Make sure no page shows an accuracy number that is not read from `metrics.json`.
+
+**Step 10: Test end to end**
+1. Run the app and submit these three reviews through the form, checking each result card and the dashboard update:
+   - "I absolutely love this product!" (5 stars)
+   - "The application keeps crashing, and I am frustrated." (1 star)
+   - "The features are good, but the performance is disappointing." (3 stars)
+2. Submit one deliberately mismatched review (5 stars with clearly negative text) and confirm that the mismatch badge appears.
+3. Confirm that the dashboard filters, the Reviews explorer filters and the CSV export all work, and that the Model Insights page shows real metrics.
+4. Fix any bugs found.
+
+**Step 11: README and run configuration**
+1. Configure the Replit run command to start with `uvicorn main:app --host 0.0.0.0 --port 8000` (and make sure the port is exposed so the web preview works).
+2. Write `README.md` covering: project overview, the workflow, how to train (`python ml/train.py`), how to run, how to switch to Supabase by changing `DATABASE_URL`, API list, honest limitations, future scope, and references: the Emotion-Prediction GitHub repo, Hugging Face `dair-ai/emotion`, and the TensorFlow, FastAPI and Supabase documentation.
+
+**Final acceptance checklist (the app is complete only if all are true):**
+- The model trains and the artifacts exist; `metrics.json` holds real test-set results.
+- A review can be submitted and appears immediately in the dashboard and the explorer.
+- Rating, emotion, sentiment and confidence are stored separately and displayed separately.
+- All 6 dashboard charts render with the seeded data.
+- The app works in both light and dark mode and on mobile widths.
+- No hardcoded accuracy claims anywhere.
